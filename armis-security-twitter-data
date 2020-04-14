@@ -1,0 +1,108 @@
+#Connect to the Twitter API, 
+#pull tweets that mention @ArmisSecurity handle 
+#convert raw data into pandas dataframe 
+#feature engineer the columns
+#run a sentiment analysis of the text
+#export clean data frame to csv
+#create a word cloud from the tweets
+
+import twitter
+import tweepy as tw
+import csv
+import seaborn
+import twython
+import json
+import numpy
+import pandas as pd
+import textblob
+import nltk
+import string
+from textblob import TextBlob
+import plotly.express as px
+from matplotlib import pyplot as plt
+%matplotlib inline
+import plotly.graph_objects as go
+
+#initialize credentials
+consumer_key= 'xxxxxxxx'
+consumer_secret= 'xxxxxxxx'
+access_token= 'xxxxxxxx'
+access_token_secret= 'xxxxxxxx'
+
+#install api
+auth = tw.OAuthHandler(consumer_key, consumer_secret)
+auth.set_access_token(access_token, access_token_secret)
+api = tw.API(auth, wait_on_rate_limit=True)
+
+#define parameters of query
+search_words = "#ArmisSecurity -filter:retweets"
+date_since = "2020-03-01"
+screen_name = 'ArmisSecurity'
+
+#establish variables
+tweets = tw.Cursor(api.search,
+              q=screen_name,
+              lang="en",
+              since=date_since).items(1000)
+
+users_locs = [[tweet.created_at,tweet.user.screen_name, tweet.user.description, tweet.lang, tweet.user.followers_count, tweet.user.friends_count,
+               tweet.user.location, tweet.text, tweet.retweet_count, tweet.favorite_count, tweet.coordinates] for tweet in tweets]
+
+tweet_text = pd.DataFrame(data=users_locs, 
+                    columns=["created_at",'user',"description","lang","followers_count","friends_count","location","text","retweet_count","favorite_count",
+                            "coordinates"])
+
+#create a dataframe of the tweets
+df = pd.DataFrame.from_dict(tweet_text, orient='columns')
+
+#create a sentiment data subset of the tweet data
+sentiment = df[['created_at','user','followers_count','text']]
+
+#sentimize the data
+sentiment['text'] = sentiment['text'].astype(str)
+sentiment['sent'] = sentiment['text'].apply(lambda x:  TextBlob(x).sentiment)
+
+#determine the sentiment
+sentiment['polarity'] = sentiment['sent'].str[0]
+sentiment['subjectivity'] = sentiment['sent'].str[1]
+sentiment['negative'] =  (sentiment['polarity'] <  0) & (sentiment['polarity'] > -.2)  
+sentiment['very_negative'] = (sentiment['polarity'] < -.2 ) 
+sentiment['neutral'] =  (sentiment['polarity'] == 0) 
+sentiment['positive'] =  (sentiment['polarity'] > 0) & (sentiment['polarity'] < .6)
+sentiment['very_positive'] =  (sentiment['polarity'] > .60) 
+
+#determine influencer status
+sentiment['influencer'] =  (sentiment['followers_count'] > 999) 
+
+#create a pandas dataframe
+sentiment_results = pd.DataFrame.from_dict(sentiment, orient='columns')
+
+#publish dataframe to csv
+sentiment_results.to_csv('armis_security_tweets.csv')
+
+#see the final results
+sentiment_results
+
+from wordcloud import WordCloud, STOPWORDS
+from matplotlib import rcParams
+
+#grab the text column
+tweet_text = sentiment_results[['text']]
+
+#make all of the text lowercase
+all_tweet_text = ' '.join(tweet_text['text'].str.lower())
+
+#declare stop words
+stopwords = STOPWORDS
+stopwords.add('https')
+stopwords.add('co')
+
+
+#generate the word cloud 
+wordcloud = WordCloud(stopwords=stopwords, background_color="white", max_words=1000).generate(all_tweet_text)
+
+#visualize it
+rcParams['figure.figsize'] = 10, 20
+plt.imshow(wordcloud)
+plt.axis("off")
+plt.show()
