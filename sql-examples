@@ -1,0 +1,73 @@
+*SQL examples based on an imaginary table like this one called “Device Usage Data” (dbo.device_usage_data)
+
+#column headers
+Date	Device_ID	Device_Type	IP_Address	manufacturer
+				
+
+
+
+*Example 1: Which IP Addresses have been associated with at least 5 devices in the last 30 days?
+
+Select distinct IP_Address, count(distinct Device_ID) as devices
+From dbo.device_usage_data
+where date >= DATEADD(day,-30,getdate())
+Group by IP_Address
+Having count(distinct Device_ID) >= 5
+
+
+*Example 2: What is the total % of total devices broken out by device type?
+
+Select distinct Device_Type, 
+count(distinct Device_ID) ad total_devices, 
+(count(distinct Device_ID) * 100 / (sum(count(distinct Device_ID)) over ()) as percent_of_total
+From dbo.device_usage_data
+Group by Device_Type
+
+
+*Example 3: For each Ip Address, break out # of devices by a few specific device types:
+
+Select distinct ip address, 
+
+Count(distinct(case when device_type like ‘Medical Device’ 
+then Device_ID end)) as medical_devices,
+
+Count(distinct(case when device_type like ‘Cell Phone’ 
+then Device_ID end)) as cell_phones,
+
+Count(distinct(case when device_type like ‘Tesla Car’ 
+then Device_ID end)) as tesla_cars
+
+from dbo.device_usage_data
+group by ip_address
+
+
+
+*Example 4: Which devices were associated with the same IP Address at least 7 days in a row during the month of March?
+
+--step 1:
+
+With dates(date, Device_ID, IP_Address) as 
+	
+	(Select distinct cast(date as date), Device_ID, IP_Address
+	From dbo.device_usage_data
+	Where date between ‘3-1-2020’ and ‘3-31-2020),
+
+groups as
+(select distinct Device_ID, IP_Address, 
+row_number() over (order by date) as rn,
+dateadd(day, -ROW_Number() Over (Order by Device_ID, IP_Address, date),date) as grp,
+date
+from dates)
+
+select distinct Device_ID, IP_Address, count(*) as consecutiveDates, 
+min(date) as startdate, max(date) as enddate
+into #streaks_by_Device_and_IP
+from groups
+group by grp, Device_ID,  IP_Adress
+
+
+--step 2:
+
+select distinct * 
+from #streaks_by_Device_and_IP
+where consecutiveDates >= 7
